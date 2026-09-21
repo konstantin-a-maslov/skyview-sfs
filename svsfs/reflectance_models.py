@@ -12,10 +12,8 @@ def lambert(alpha, cos_i, cos_e):
     return jnp.where(valid, r, 0.0)
 
 
-def lunar_lambert(alpha, cos_i, cos_e, eps=1e-6):
+def lunar_lambert(alpha, cos_i, cos_e, a=-0.019, b=2.42e-4, c=-1.46e-6, eps=1e-6):
     alpha = jnp.degrees(alpha)
-
-    a, b, c = -0.019, 2.42e-4, -1.46e-6
     l_alpha = 1.0 + a * alpha + b * alpha**2 + c * alpha**3
 
     denom = jnp.maximum(cos_i + cos_e, eps)

@@ -13,6 +13,8 @@ def forward(
     dx, dy,
     cast_shadows=True,
     diffuse_sky=True,
+    diffuse_sky_n_azimuth=32, 
+    diffuse_sky_n_elevation=16,
     horizon_softness=1e-2, # in radians
     return_aux=False,
 ):
@@ -31,7 +33,10 @@ def forward(
     r = svsfs.reflectance_models.lunar_lambert(alpha, cos_i, cos_e)
 
     if diffuse_sky:
-        sky_dirs = hemisphere_directions()
+        sky_dirs = hemisphere_directions(
+            n_azimuth=diffuse_sky_n_azimuth, 
+            n_elevation=diffuse_sky_n_elevation,
+        )
         def sky_factor_step(total, dir_vector):
             cos_i = jnp.sum(n * dir_vector, axis=-1)
             cos_alpha = jnp.sum(dir_vector * sensor_vector, axis=-1)

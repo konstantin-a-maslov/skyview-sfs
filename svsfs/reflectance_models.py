@@ -1,13 +1,12 @@
 import jax.numpy as jnp
 
 
-def hapke(alpha, cos_i, cos_e):
+def hapke(alpha, cos_i, cos_e, eps=1e-6):
     raise NotImplementedError()
 
 
 def lambert(alpha, cos_i, cos_e):
     r = cos_i
-
     valid = (cos_i > 0.0) & (cos_e > 0.0)
     return jnp.where(valid, r, 0.0)
 

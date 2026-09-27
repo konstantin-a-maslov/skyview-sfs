@@ -13,8 +13,9 @@ def forward(
     dx, dy,
     cast_shadows=True,
     diffuse_sky=True,
-    diffuse_sky_n_azimuth=32, 
+    diffuse_sky_n_azimuth=64, 
     diffuse_sky_n_elevation=128,
+    diffuse_sky_azimuth_batch_size=16,
     horizon_softness=1e-2, # in radians
     return_aux=False,
 ):
@@ -37,8 +38,8 @@ def forward(
             n_azimuth=diffuse_sky_n_azimuth, 
             n_elevation=diffuse_sky_n_elevation,
         )
-        def sky_factor_step(total, dir_vectors):
-            # Trace the terrain once per azimuth.
+        sky_dirs = sky_dirs.reshape(-1, diffuse_sky_azimuth_batch_size, diffuse_sky_n_elevation, 3)
+        def sky_factor_azimuth(dir_vectors):
             slope_max = horizon_slope(z, dir_vectors[0], dx, dy)
             excess = horizon_excess(slope_max, dir_vectors)
             visibility = visibility_from_excess(excess, dir_vectors, softness=horizon_softness)
@@ -46,7 +47,10 @@ def forward(
             cos_alpha = jnp.sum(dir_vectors * sensor_vector, axis=-1)
             alpha = jnp.arccos(jnp.clip(cos_alpha, -1.0, 1.0))
             r = svsfs.reflectance_models.lunar_lambert(alpha[:, None, None], cos_i, cos_e[None, ...])
-            total += jnp.sum(visibility * r, axis=0)
+            return jnp.sum(visibility * r, axis=0)
+        def sky_factor_step(total, dir_vectors_batch):
+            contributions = jax.vmap(sky_factor_azimuth)(dir_vectors_batch)
+            total += jnp.sum(contributions, axis=0)
             return total, None
         sky_factor = jnp.zeros_like(z)
         sky_factor, _ = jax.lax.scan(sky_factor_step, sky_factor, sky_dirs) # consider batchifying it here
@@ -170,7 +174,7 @@ def visibility_from_excess(excess, dir_vector, softness=1e-2, eps=1e-6):
     return visibility
 
 
-def hemisphere_directions(n_azimuth=32, n_elevation=128):
+def hemisphere_directions(n_azimuth=64, n_elevation=128):
     az = (jnp.arange(n_azimuth) + 0.5) * 2.0 * jnp.pi / n_azimuth
     sin_el = (jnp.arange(n_elevation) + 0.5) / n_elevation
     az, sin_el = jnp.meshgrid(az, sin_el, indexing="ij")

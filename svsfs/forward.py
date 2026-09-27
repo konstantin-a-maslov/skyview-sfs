@@ -14,7 +14,7 @@ def forward(
     cast_shadows=True,
     diffuse_sky=True,
     diffuse_sky_n_azimuth=32, 
-    diffuse_sky_n_elevation=16,
+    diffuse_sky_n_elevation=128,
     horizon_softness=1e-2, # in radians
     return_aux=False,
 ):
@@ -37,17 +37,20 @@ def forward(
             n_azimuth=diffuse_sky_n_azimuth, 
             n_elevation=diffuse_sky_n_elevation,
         )
-        def sky_factor_step(total, dir_vector):
-            cos_i = jnp.sum(n * dir_vector, axis=-1)
-            cos_alpha = jnp.sum(dir_vector * sensor_vector, axis=-1)
+        def sky_factor_step(total, dir_vectors):
+            # Trace the terrain once per azimuth.
+            slope_max = horizon_slope(z, dir_vectors[0], dx, dy)
+            excess = horizon_excess(slope_max, dir_vectors)
+            visibility = visibility_from_excess(excess, dir_vectors, softness=horizon_softness)
+            cos_i = jnp.sum(n[None, ...] * dir_vectors[:, None, None, :], axis=-1)
+            cos_alpha = jnp.sum(dir_vectors * sensor_vector, axis=-1)
             alpha = jnp.arccos(jnp.clip(cos_alpha, -1.0, 1.0))
-            visibility = horizon_operator(z, dir_vector, dx, dy, softness=horizon_softness)
-            r = svsfs.reflectance_models.lunar_lambert(alpha, cos_i, cos_e)
-            total += visibility * r
+            r = svsfs.reflectance_models.lunar_lambert(alpha[:, None, None], cos_i, cos_e[None, ...])
+            total += jnp.sum(visibility * r, axis=0)
             return total, None
         sky_factor = jnp.zeros_like(z)
         sky_factor, _ = jax.lax.scan(sky_factor_step, sky_factor, sky_dirs) # consider batchifying it here
-        sky_factor /= sky_dirs.shape[0]
+        sky_factor /= (diffuse_sky_n_azimuth * diffuse_sky_n_elevation)
 
     illumination = sun_factor * r + d * sky_factor
     image = g * albedo * illumination + b
@@ -84,15 +87,30 @@ def horizon_operator(
     softness=1e-2,
     eps=1e-6,
 ):
+    slope_max = horizon_slope(
+        z, dir_vector, dx, dy, sample_step_px=sample_step_px, eps=eps,
+    )
+    excess = horizon_excess(slope_max, dir_vector, eps=eps)
+    visibility = visibility_from_excess(
+        excess, dir_vector, softness=softness, eps=eps,
+    )
+    return visibility
+
+
+def horizon_slope(
+    z,
+    dir_vector,
+    dx, dy,
+    sample_step_px=1.0,
+    eps=1e-6,
+):
     ny, nx = z.shape
-    vx, vy, vz = dir_vector
+    vx, vy, _ = dir_vector
     horizontal = jnp.hypot(vx, vy)
 
     horizontal_safe = jnp.maximum(horizontal, eps)
     ux = vx / horizontal_safe
     uy = vy / horizontal_safe
-    tan_elevation = vz / horizontal_safe
-    cos2 = 1.0 / (1.0 + tan_elevation**2) # to convert softness to slope space
 
     pixels_per_metre = jnp.maximum(jnp.abs(ux) / dx, jnp.abs(uy) / dy)
     ds = sample_step_px / jnp.maximum(pixels_per_metre, eps)
@@ -103,30 +121,59 @@ def horizon_operator(
     n_steps = math.ceil(max(ny - 1, nx - 1) / sample_step_px) + 1
     ks = jnp.arange(1, n_steps + 1, dtype=z.dtype)
 
-    def step(excess, k):
+    def step(slope_max, k):
         rr, cc = row0 + k * drow, col0 + k * dcol
         valid = (rr >= 0.0) & (rr <= ny - 1) & (cc >= 0.0) & (cc <= nx - 1)
+
         z_sample = jax.scipy.ndimage.map_coordinates(
             z, [rr, cc], order=1, mode="nearest",
         )
-        e = (z_sample - z) / (k * ds) - tan_elevation
-        excess = jnp.where(valid, jnp.maximum(excess, e), excess)
-        return excess, None
 
-    excess0 = jnp.full_like(z, -jnp.inf)
-    excess, _ = jax.lax.scan(step, excess0, ks)
+        slope = (z_sample - z) / (k * ds)
+        slope_max = jnp.where(valid, jnp.maximum(slope_max, slope), slope_max)
+
+        return slope_max, None
+
+    slope0 = jnp.full_like(z, -jnp.inf)
+    slope_max, _ = jax.lax.scan(step, slope0, ks)
+
+    return slope_max
+
+
+def horizon_excess(slope_max, dir_vector, eps=1e-6):
+    vx = dir_vector[..., 0, None, None]
+    vy = dir_vector[..., 1, None, None]
+    vz = dir_vector[..., 2, None, None]
+
+    horizontal = jnp.hypot(vx, vy)
+    horizontal_safe = jnp.maximum(horizontal, eps)
+    tan_elevation = vz / horizontal_safe
+
+    return slope_max - tan_elevation
+
+
+def visibility_from_excess(excess, dir_vector, softness=1e-2, eps=1e-6):
+    vx = dir_vector[..., 0, None, None]
+    vy = dir_vector[..., 1, None, None]
+    vz = dir_vector[..., 2, None, None]
+
+    horizontal = jnp.hypot(vx, vy)
+    horizontal_safe = jnp.maximum(horizontal, eps)
+    tan_elevation = vz / horizontal_safe
+    cos2 = 1.0 / (1.0 + tan_elevation**2)
+
     visibility = jax.nn.sigmoid(-excess * cos2 / softness)
 
-    visibility = jnp.where(horizontal < eps, jnp.ones_like(z), visibility)
-    visibility = jnp.where(vz > 0.0, visibility, jnp.zeros_like(z))
+    visibility = jnp.where(horizontal < eps, jnp.ones_like(excess), visibility)
+    visibility = jnp.where(vz > 0.0, visibility, jnp.zeros_like(excess))
 
     return visibility
 
 
-def hemisphere_directions(n_azimuth=32, n_elevation=16):
+def hemisphere_directions(n_azimuth=32, n_elevation=128):
     az = (jnp.arange(n_azimuth) + 0.5) * 2.0 * jnp.pi / n_azimuth
     sin_el = (jnp.arange(n_elevation) + 0.5) / n_elevation
-    az, sin_el = jnp.meshgrid(az, sin_el, indexing="xy")
+    az, sin_el = jnp.meshgrid(az, sin_el, indexing="ij")
     cos_el = jnp.sqrt(1.0 - sin_el**2)
 
     dirs = jnp.stack([
@@ -135,4 +182,4 @@ def hemisphere_directions(n_azimuth=32, n_elevation=16):
         sin_el,
     ], axis=-1)
 
-    return dirs.reshape(-1, 3)
+    return dirs

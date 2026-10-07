@@ -2,7 +2,7 @@
 set -euo pipefail
 shopt -s nullglob
 
-jobs=9
+jobs=10
 wait_for_jobs() {
     while (( $(jobs -rp | wc -l) >= jobs )); do
         wait -n

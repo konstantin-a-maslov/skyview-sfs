@@ -63,7 +63,7 @@ for path in "${input_paths[@]}"; do
     wait_for_jobs
     (
         isis hi2isis from="$path" to="$tmpdir/${stem}.cub"
-	isis spiceinit from="$tmpdir/${stem}.cub" web="$web"
+        isis spiceinit from="$tmpdir/${stem}.cub" web="$web"
         isis hical from="$tmpdir/${stem}.cub" to="$tmpdir/${stem}.cal.cub" units=iof
     ) &  
 done

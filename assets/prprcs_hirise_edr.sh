@@ -57,12 +57,13 @@ isis() {
 input_paths=("${input}"/*.IMG)
 
 for path in "${input_paths[@]}"; do
+    stem="${path##*/}"
+    stem="${stem%.*}"
+    
     wait_for_jobs
     (
-        stem="${path##*/}"
-        stem="${stem%.*}"
-
         isis hi2isis from="$path" to="$tmpdir/${stem}.cub"
+	isis spiceinit from="$tmpdir/${stem}.cub" web="$web"
         isis hical from="$tmpdir/${stem}.cub" to="$tmpdir/${stem}.cal.cub" units=iof
     ) &  
 done

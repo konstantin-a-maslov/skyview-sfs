@@ -51,6 +51,7 @@ trap cleanup EXIT
 isis() {
     conda run -n "$conda_env" "$@"
 }
+isisdata="$(conda run -n "$conda_env" bash -lc 'printf "%s" "$ISISDATA"')"
 
 
 # PROCESSING PIPELINE
@@ -65,26 +66,89 @@ for path in "${input_paths[@]}"; do
         isis hi2isis from="$path" to="$tmpdir/${stem}.cub"
         isis spiceinit from="$tmpdir/${stem}.cub" web="$web"
         isis hical from="$tmpdir/${stem}.cub" to="$tmpdir/${stem}.cal.cub" units=iof
+
+        summing="$(isis getkey from="$tmpdir/${stem}.cal.cub" grpname=Instrument keyword=Summing)"
+        ccd="$(isis getkey from="$tmpdir/${stem}.cal.cub" grpname=Instrument keyword=CcdId)"
+        channel="$(isis getkey from="$tmpdir/${stem}.cal.cub" grpname=Instrument keyword=ChannelNumber)"
+
+        coeff_file="$isisdata/mro/calibration/HiRISE_Gain_Drift_Correction_Bin${summing}.0001.csv"
+        coeffs="$(
+            awk -F',' -v key="${ccd}_${channel}" '
+                function trim(s) {
+                    gsub(/^[[:space:]]+|[[:space:]]+$/, "", s)
+                    return s
+                }
+                {
+                    name = trim($1)
+                    if (name == key) {
+                        for (i = 2; i <= 5; i++) {
+                            value = trim($i)
+                            sub(/^-/, "", value)
+                            printf "%s%s", value, (i < 5 ? OFS : ORS)
+                        }
+                        exit
+                    }
+                }
+            ' "$coeff_file"
+        )"
+        if [[ -z "$coeffs" ]]; then
+            echo "No gain-drift coefficients found for ${ccd}_${channel} in $coeff_file" >&2
+            exit 1
+        fi
+        read -r r0 r1 r2 max_line <<< "$coeffs"
+
+        equation="\((F1/(${r0}+(${r1}*line)+(${r2}*line*line)))*(line<${max_line})+(F1*(line>=${max_line})))"
+        isis fx f1="$tmpdir/${stem}.cal.cub" to="$tmpdir/${stem}.cal.fx.cub" mode=cubes equation="$equation"
+
+        # if [[ "$summing" == "1" || "$summing" == "2" ]]; then
+        #     isis hidestripe from="$tmpdir/${stem}.cal.fx.cub" to="$tmpdir/${stem}.cal.fx.hstmp.cub" parity=even correction=add
+        #     isis hidestripe from="$tmpdir/${stem}.cal.fx.hstmp.cub" to="$tmpdir/${stem}.cal.fx.hs.cub" parity=odd correction=add
+        # else
+        #     isis hidestripe from="$tmpdir/${stem}.cal.fx.cub" to="$tmpdir/${stem}.cal.fx.hs.cub" parity=auto correction=add
+        # fi
     ) &  
 done
 wait_all
 
-for f0 in "${tmpdir}"/*_0.cal.cub; do
+for f0 in "${tmpdir}"/*_0.cal.fx.cub; do
     [[ -e "$f0" ]] || continue
 
-    common="${f0%_0.cal.cub}"
-    f1="${common}_1.cal.cub"
+    common="${f0%_0.cal.fx.cub}"
+    f1="${common}_1.cal.fx.cub"
 
     [[ -e "$f1" ]] || continue
 
     wait_for_jobs
     (
-        isis histitch from1="$f0" from2="$f1" to="${common}.cal.stitch.cub" balance=true
+        isis histitch from1="$f0" from2="$f1" to="${common}.cal.fx.stitch.cub" balance=true
     ) &
 done
 wait_all
 
-for f in "${tmpdir}"/*.cal.stitch.cub; do
+hiequal_from="$tmpdir/hiequal_from.lis"
+hiequal_hold="$tmpdir/hiequal_hold.lis"
+hiequal_to="$tmpdir/hiequal_to.lis"
+: > "$hiequal_from"
+: > "$hiequal_hold"
+: > "$hiequal_to"
+
+for ((i=0; i<=9; i++)); do
+    matches=("${tmpdir}"/*_RED${i}.cal.fx.stitch.cub)
+    if (( ${#matches[@]} != 1 )); then
+        continue
+    fi
+    f="${matches[0]}"
+    equ="${f%.cub}.equ.cub"
+    printf '%s\n' "$f"   >> "$hiequal_from"
+    printf '%s\n' "$equ" >> "$hiequal_to"
+    if (( i == 5 )); then
+        printf '%s\n' "$f" >> "$hiequal_hold"
+    fi
+done
+
+isis hiequal fromlist="$hiequal_from" holdlist="$hiequal_hold" tolist="$hiequal_to" process=both
+
+for f in "${tmpdir}"/*.cal.fx.stitch.equ.cub; do
     [[ -e "$f" ]] || continue
 
     wait_for_jobs
@@ -95,16 +159,16 @@ for f in "${tmpdir}"/*.cal.stitch.cub; do
 done
 wait_all
           
-r5=("${tmpdir}"/*_RED5.cal.stitch.cub)
+r5=("${tmpdir}"/*_RED5.cal.fx.stitch.equ.cub)
 r5="${r5[0]}"
 
 declare -A ccd_files=()
-for f in "${tmpdir}"/*.cal.stitch.cub; do
+for f in "${tmpdir}"/*.cal.fx.stitch.equ.cub; do
     [[ -e "$f" ]] || continue
 
     filename="${f##*/}"
 
-    if [[ "$filename" =~ _RED([0-9])\.cal\.stitch\.cub$ ]]; then
+    if [[ "$filename" =~ _RED([0-9])\.cal\.fx\.stitch\.equ\.cub$ ]]; then
         ccd="${BASH_REMATCH[1]}"
     else
         continue

@@ -45,6 +45,27 @@ stem="${stem%.*}"
 isis mroctx2isis from="$input" to="$tmpdir/${stem}.cub"
 isis spiceinit from="$tmpdir/${stem}.cub" web="$web"
 
+isis campt from="$tmpdir/${stem}.cub" to="$tmpdir/${stem}.geom.pvl" type=image append=no
+incidence="$(isis getkey from="$tmpdir/${stem}.geom.pvl" grpname=GroundPoint keyword=Incidence)"
+emission="$(isis getkey from="$tmpdir/${stem}.geom.pvl" grpname=GroundPoint keyword=Emission)"
+solar_az="$(isis getkey from="$tmpdir/${stem}.geom.pvl" grpname=GroundPoint keyword=SubSolarGroundAzimuth)"
+sensor_az="$(isis getkey from="$tmpdir/${stem}.geom.pvl" grpname=GroundPoint keyword=SubSpacecraftGroundAzimuth)"
+lat="$(isis getkey from="$tmpdir/${stem}.geom.pvl" grpname=GroundPoint keyword=PlanetocentricLatitude)"
+lon="$(isis getkey from="$tmpdir/${stem}.geom.pvl" grpname=GroundPoint keyword=PositiveEast360Longitude)"
+
+cat > "$tmpdir/${stem}.scngeomgrp.pvl" <<EOF
+Group = SceneGeometry
+    ReferencePoint   = CameraImageCenter
+    Latitude         = $lat <degrees>
+    Longitude        = $lon <degrees>
+    SunAzimuth       = $solar_az <degrees>
+    SensorAzimuth    = $sensor_az <degrees>
+    IncidenceAngle   = $incidence <degrees>
+    EmissionAngle    = $emission <degrees>
+End_Group
+End
+EOF
+
 cal_path="$tmpdir/${stem}.cal.cub"
 isis ctxcal from="$tmpdir/${stem}.cub" to="$cal_path" iof=yes
 
@@ -55,3 +76,4 @@ if (( spt_sum == 1 )); then
 fi
 
 isis cam2map from="$cal_path" to="$output" pixres=mpp resolution=4 interp=cubicconvolution
+isis editlab from="$output" option=addtemp tempfile="$tmpdir/${stem}.scngeomgrp.pvl"

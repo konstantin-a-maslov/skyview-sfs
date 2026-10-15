@@ -162,6 +162,29 @@ wait_all
 r5=("${tmpdir}"/*_RED5.cal.fx.stitch.equ.cub)
 r5="${r5[0]}"
 
+isis campt from="$r5" to="$tmpdir/mosaic.geom.pvl" type=image append=no
+incidence="$(isis getkey from="$tmpdir/mosaic.geom.pvl" grpname=GroundPoint keyword=Incidence)"
+emission="$(isis getkey from="$tmpdir/mosaic.geom.pvl" grpname=GroundPoint keyword=Emission)"
+solar_az="$(isis getkey from="$tmpdir/mosaic.geom.pvl" grpname=GroundPoint keyword=SubSolarGroundAzimuth)"
+sensor_az="$(isis getkey from="$tmpdir/mosaic.geom.pvl" grpname=GroundPoint keyword=SubSpacecraftGroundAzimuth)"
+lat="$(isis getkey from="$tmpdir/mosaic.geom.pvl" grpname=GroundPoint keyword=PlanetocentricLatitude)"
+lon="$(isis getkey from="$tmpdir/mosaic.geom.pvl" grpname=GroundPoint keyword=PositiveEast360Longitude)"
+solar_longitude="$(isis getkey from="$tmpdir/mosaic.geom.pvl" grpname=GroundPoint keyword=SolarLongitude)"
+
+cat > "$tmpdir/mosaic.scngeomgrp.pvl" <<EOF
+Group = SceneGeometry
+    ReferencePoint   = CameraImageCenter
+    Latitude         = $lat <degrees>
+    Longitude        = $lon <degrees>
+    SunAzimuth       = $solar_az <degrees>
+    SensorAzimuth    = $sensor_az <degrees>
+    IncidenceAngle   = $incidence <degrees>
+    EmissionAngle    = $emission <degrees>
+    SolarLongitude   = $solar_longitude <degrees>
+End_Group
+End
+EOF
+
 declare -A ccd_files=()
 for f in "${tmpdir}"/*.cal.fx.stitch.equ.cub; do
     [[ -e "$f" ]] || continue
@@ -236,30 +259,12 @@ for ((i=4; i>=0; i--)); do
     [[ -n "$from" ]] || continue
 
     if [[ -n "${sample_offsets[$i]:-}" ]]; then
-        sample_sum="$(
-            awk \
-                -v a="$sample_sum" \
-                -v b="${sample_offsets[$i]}" \
-                'BEGIN {printf "%.15g", a + b}'
-        )"
-        line_sum="$(
-            awk \
-                -v a="$line_sum" \
-                -v b="${line_offsets[$i]}" \
-                'BEGIN {printf "%.15g", a + b}'
-        )"
+        sample_sum="$(awk -v a="$sample_sum" -v b="${sample_offsets[$i]}" 'BEGIN {printf "%.15g", a + b}')"
+        line_sum="$(awk -v a="$line_sum" -v b="${line_offsets[$i]}" 'BEGIN {printf "%.15g", a + b}')"
     fi
 
-    outsample="$(
-        awk \
-            -v x="$sample_sum" \
-            'BEGIN {print int(x >= 0 ? x + 0.5 : x - 0.5)}'
-    )"
-    outline="$(
-        awk \
-            -v x="$line_sum" \
-            'BEGIN {print int(x >= 0 ? x + 0.5 : x - 0.5)}'
-    )"
+    outsample="$(awk -v x="$sample_sum" 'BEGIN {print int(x >= 0 ? x + 0.5 : x - 0.5)}')"
+    outline="$(awk -v x="$line_sum" 'BEGIN {print int(x >= 0 ? x + 0.5 : x - 0.5)}')"
 
     isis handmos from="$from" mosaic="$mosaic" outsample="$outsample" outline="$outline" priority=beneath
 done
@@ -273,32 +278,15 @@ for ((i=6; i<=9; i++)); do
     j=$((i - 1))
 
     if [[ -n "${sample_offsets[$j]:-}" ]]; then
-        sample_sum="$(
-            awk \
-                -v a="$sample_sum" \
-                -v b="${sample_offsets[$j]}" \
-                'BEGIN {printf "%.15g", a - b}'
-        )"
-        line_sum="$(
-            awk \
-                -v a="$line_sum" \
-                -v b="${line_offsets[$j]}" \
-                'BEGIN {printf "%.15g", a - b}'
-        )"
+        sample_sum="$(awk -v a="$sample_sum" -v b="${sample_offsets[$j]}" 'BEGIN {printf "%.15g", a - b}')"
+        line_sum="$(awk -v a="$line_sum" -v b="${line_offsets[$j]}" 'BEGIN {printf "%.15g", a - b}')"
     fi
 
-    outsample="$(
-        awk \
-            -v x="$sample_sum" \
-            'BEGIN {print int(x >= 0 ? x + 0.5 : x - 0.5)}'
-    )"
-    outline="$(
-        awk \
-            -v x="$line_sum" \
-            'BEGIN {print int(x >= 0 ? x + 0.5 : x - 0.5)}'
-    )"
+    outsample="$(awk -v x="$sample_sum" 'BEGIN {print int(x >= 0 ? x + 0.5 : x - 0.5)}')"
+    outline="$(awk -v x="$line_sum" 'BEGIN {print int(x >= 0 ? x + 0.5 : x - 0.5)}')"
 
     isis handmos from="$from" mosaic="$mosaic" outsample="$outsample" outline="$outline" priority=beneath
 done 
 
 isis cam2map from="$mosaic" to="$output" pixres=camera interp=cubicconvolution
+isis editlab from="$output" options=addtemp tempfile="$tmpdir/mosaic.scngeomgrp.pvl"

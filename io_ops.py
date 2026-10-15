@@ -18,14 +18,12 @@ def read_scene(path):
             "SensorAzimuth",
             "IncidenceAngle",
             "EmissionAngle",
+            "SolarLongitude",
         ]
     }
 
     attrs["sun_elevation"] = 90.0 - attrs["incidence_angle"]
     attrs["sensor_elevation"] = 90.0 - attrs["emission_angle"]
-
-    solar_longitude = float(get_named(label, "Table", "BodyRotation")["SolarLongitude"])
-    attrs["solar_longitude"] = solar_longitude
 
     scene.attrs.update(attrs)
 

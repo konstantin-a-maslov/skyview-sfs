@@ -52,6 +52,7 @@ solar_az="$(isis getkey from="$tmpdir/${stem}.geom.pvl" grpname=GroundPoint keyw
 sensor_az="$(isis getkey from="$tmpdir/${stem}.geom.pvl" grpname=GroundPoint keyword=SubSpacecraftGroundAzimuth)"
 lat="$(isis getkey from="$tmpdir/${stem}.geom.pvl" grpname=GroundPoint keyword=PlanetocentricLatitude)"
 lon="$(isis getkey from="$tmpdir/${stem}.geom.pvl" grpname=GroundPoint keyword=PositiveEast360Longitude)"
+solar_longitude="$(isis getkey from="$tmpdir/${stem}.geom.pvl" grpname=GroundPoint keyword=SolarLongitude)"
 
 cat > "$tmpdir/${stem}.scngeomgrp.pvl" <<EOF
 Group = SceneGeometry
@@ -62,6 +63,7 @@ Group = SceneGeometry
     SensorAzimuth    = $sensor_az <degrees>
     IncidenceAngle   = $incidence <degrees>
     EmissionAngle    = $emission <degrees>
+    SolarLongitude   = $solar_longitude <degrees>
 End_Group
 End
 EOF

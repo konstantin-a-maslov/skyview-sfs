@@ -6,20 +6,16 @@ import math
 
 def forward(
     params,
-    albedo, 
-    z_prior,
-    sun_vector, # surface -> sun
-    sensor_vector, # surface -> sensor
+    albedo, z_prior,
+    sun_vector, sensor_vector, # surface -> sun, surface -> sensor
     dx, dy,
     cast_shadows=True,
     diffuse_sky=True,
-    diffuse_sky_n_azimuth=64, 
-    diffuse_sky_n_elevation=128,
-    diffuse_sky_azimuth_batch_size=16,
-    horizon_softness=1e-2, # in radians
+    diffuse_sky_n_azimuth=64, diffuse_sky_n_elevation=128, diffuse_sky_azimuth_batch_size=16,
+    horizon_softness=0.25e-2, # in radians
     return_aux=False,
 ):
-    delta_z, g, b, d = params
+    delta_z, g, b, d, kappa = params
     sun_factor, sky_factor = jnp.ones_like(delta_z), jnp.zeros_like(delta_z)
 
     z = z_prior + delta_z
@@ -34,12 +30,14 @@ def forward(
     r = svsfs.reflectance_models.lunar_lambert(alpha, cos_i, cos_e)
 
     if diffuse_sky:
-        sky_dirs = hemisphere_directions(
-            n_azimuth=diffuse_sky_n_azimuth, 
-            n_elevation=diffuse_sky_n_elevation,
-        )
+        sky_dirs = hemisphere_directions(diffuse_sky_n_azimuth, diffuse_sky_n_elevation)
+        cos_sun_angle = jnp.sum(sky_dirs * sun_vector, axis=-1)
+        sky_weights = jnp.exp(kappa * cos_sun_angle)
+        sky_weights /= jnp.mean(sky_weights)
         sky_dirs = sky_dirs.reshape(-1, diffuse_sky_azimuth_batch_size, diffuse_sky_n_elevation, 3)
-        def sky_factor_azimuth(dir_vectors):
+        sky_weights = sky_weights.reshape(-1, diffuse_sky_azimuth_batch_size, diffuse_sky_n_elevation)
+
+        def sky_factor_azimuth(dir_vectors, weights):
             slope_max = horizon_slope(z, dir_vectors[0], dx, dy)
             excess = horizon_excess(slope_max, dir_vectors)
             visibility = visibility_from_excess(excess, dir_vectors, softness=horizon_softness)
@@ -47,13 +45,16 @@ def forward(
             cos_alpha = jnp.sum(dir_vectors * sensor_vector, axis=-1)
             alpha = jnp.arccos(jnp.clip(cos_alpha, -1.0, 1.0))
             r = svsfs.reflectance_models.lunar_lambert(alpha[:, None, None], cos_i, cos_e[None, ...])
-            return jnp.sum(visibility * r, axis=0)
-        def sky_factor_step(total, dir_vectors_batch):
-            contributions = jax.vmap(sky_factor_azimuth)(dir_vectors_batch)
+            return jnp.sum(weights[:, None, None] * visibility * r, axis=0)
+
+        def sky_factor_step(total, batch):
+            dir_vectors_batch, weights_batch = batch
+            contributions = jax.vmap(sky_factor_azimuth)(dir_vectors_batch, weights_batch)
             total += jnp.sum(contributions, axis=0)
             return total, None
+
         sky_factor = jnp.zeros_like(z)
-        sky_factor, _ = jax.lax.scan(sky_factor_step, sky_factor, sky_dirs) # consider batchifying it here
+        sky_factor, _ = jax.lax.scan(sky_factor_step, sky_factor, (sky_dirs, sky_weights))
         sky_factor /= (diffuse_sky_n_azimuth * diffuse_sky_n_elevation)
 
     illumination = sun_factor * r + d * sky_factor
@@ -91,13 +92,9 @@ def horizon_operator(
     softness=1e-2,
     eps=1e-6,
 ):
-    slope_max = horizon_slope(
-        z, dir_vector, dx, dy, sample_step_px=sample_step_px, eps=eps,
-    )
+    slope_max = horizon_slope(z, dir_vector, dx, dy, sample_step_px=sample_step_px, eps=eps)
     excess = horizon_excess(slope_max, dir_vector, eps=eps)
-    visibility = visibility_from_excess(
-        excess, dir_vector, softness=softness, eps=eps,
-    )
+    visibility = visibility_from_excess(excess, dir_vector, softness=softness, eps=eps)
     return visibility
 
 

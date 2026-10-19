@@ -27,7 +27,9 @@ done
 
 [[ -n "$input" && -n "$output" ]] || usage
 
-tmpdir="$(mktemp -d)"
+scratch_root="$HOME/TMP"
+mkdir -p -- "$scratch_root"
+tmpdir="$(mktemp -d "$scratch_root/hirise.XXXXXXXX")"
 cleanup() {
     rm -rf -- "$tmpdir"
 }

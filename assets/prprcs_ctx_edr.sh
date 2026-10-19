@@ -29,7 +29,7 @@ done
 
 scratch_root="$HOME/TMP"
 mkdir -p -- "$scratch_root"
-tmpdir="$(mktemp -d "$scratch_root/hirise.XXXXXXXX")"
+tmpdir="$(mktemp -d "$scratch_root/ctx.XXXXXXXX")"
 cleanup() {
     rm -rf -- "$tmpdir"
 }

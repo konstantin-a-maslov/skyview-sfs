@@ -11,7 +11,7 @@ def forward(
     dx, dy,
     cast_shadows=True,
     diffuse_sky=True,
-    diffuse_sky_n_azimuth=64, diffuse_sky_n_elevation=128, diffuse_sky_azimuth_batch_size=16,
+    diffuse_sky_n_azimuth=32, diffuse_sky_n_elevation=32, diffuse_sky_azimuth_batch_size=1,
     horizon_softness=0.25e-2, # in radians
     return_aux=False,
 ):
@@ -27,6 +27,7 @@ def forward(
     alpha = jnp.arccos(jnp.clip(cos_alpha, -1.0, 1.0))
     if cast_shadows:
         sun_factor = horizon_operator(z, sun_vector, dx, dy, softness=horizon_softness)
+        sun_factor = jnp.where(jnp.isnan(z), jnp.nan, sun_factor)
     r = model.reflectance_models.lunar_lambert(alpha, cos_i, cos_e)
 
     if diffuse_sky:
@@ -56,8 +57,9 @@ def forward(
         sky_factor = jnp.zeros_like(z)
         sky_factor, _ = jax.lax.scan(sky_factor_step, sky_factor, (sky_dirs, sky_weights))
         sky_factor /= (diffuse_sky_n_azimuth * diffuse_sky_n_elevation)
+        sky_factor = jnp.where(jnp.isnan(z), jnp.nan, sky_factor)
 
-    illumination = sun_factor * r + d * sky_factor
+    illumination = sun_factor * r + d * sky_factor  
     image = g * albedo * illumination + b
 
     if return_aux:
@@ -131,7 +133,7 @@ def horizon_slope(
         )
 
         slope = (z_sample - z) / (k * ds)
-        slope_max = jnp.where(valid, jnp.maximum(slope_max, slope), slope_max)
+        slope_max = jnp.where(valid, jnp.fmax(slope_max, slope), slope_max)
 
         return slope_max, None
 
@@ -171,7 +173,7 @@ def visibility_from_excess(excess, dir_vector, softness=1e-2, eps=1e-6):
     return visibility
 
 
-def hemisphere_directions(n_azimuth=64, n_elevation=128):
+def hemisphere_directions(n_azimuth=32, n_elevation=32):
     az = (jnp.arange(n_azimuth) + 0.5) * 2.0 * jnp.pi / n_azimuth
     sin_el = (jnp.arange(n_elevation) + 0.5) / n_elevation
     az, sin_el = jnp.meshgrid(az, sin_el, indexing="ij")

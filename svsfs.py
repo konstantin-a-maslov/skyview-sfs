@@ -59,6 +59,11 @@ def forward(args):
     if return_aux:
         image, aux = image
 
+    import matplotlib.pyplot as plt
+    plt.imshow(image, cmap="gray")
+    plt.tight_layout()
+    plt.show()
+
     
 
 
@@ -84,9 +89,9 @@ def resolve_cli_args():
     forward.add_argument("--sensor_elevation", type=float, required=True, help="Sensor elevation")
     forward.add_argument("--no_cast_shadows", action="store_true", default=False, help="Turn off shadow casting")
     forward.add_argument("--no_diffuse_sky", action="store_true", default=False, help="Turn off diffuse sky illumination")
-    forward.add_argument("--diffuse_sky_n_azimuth", type=int, default=64, help="Number of azimuth directions for diffuse sky illumination calculation")
-    forward.add_argument("--diffuse_sky_n_elevation", type=int, default=128, help="Number of elevation directions for diffuse sky illumination calculation")
-    forward.add_argument("--diffuse_sky_azimuth_batch_size", type=int, default=16, help="Batch size for traversing azimuth directions for diffuse sky illumination calculation")
+    forward.add_argument("--diffuse_sky_n_azimuth", type=int, default=32, help="Number of azimuth directions for diffuse sky illumination calculation")
+    forward.add_argument("--diffuse_sky_n_elevation", type=int, default=32, help="Number of elevation directions for diffuse sky illumination calculation")
+    forward.add_argument("--diffuse_sky_azimuth_batch_size", type=int, default=1, help="Batch size for traversing azimuth directions for diffuse sky illumination calculation")
     forward.add_argument("--horizon_softness", type=float, default=0.0025, help="Softness parameter of horizon operator")
     forward.add_argument("--r", type=pathlib.Path, help="Output raw terrain-unaware illumination (GDAL-supported)")
     forward.add_argument("--sun_factor", type=pathlib.Path, help="Output cast shadows (GDAL-supported)")

@@ -27,7 +27,7 @@ def forward(
     alpha = jnp.arccos(jnp.clip(cos_alpha, -1.0, 1.0))
     if cast_shadows:
         sun_factor = horizon_operator(z, sun_vector, dx, dy, softness=horizon_softness)
-    r = svsfs.reflectance_models.lunar_lambert(alpha, cos_i, cos_e)
+    r = model.reflectance_models.lunar_lambert(alpha, cos_i, cos_e)
 
     if diffuse_sky:
         sky_dirs = hemisphere_directions(diffuse_sky_n_azimuth, diffuse_sky_n_elevation)
@@ -44,7 +44,7 @@ def forward(
             cos_i = jnp.sum(n[None, ...] * dir_vectors[:, None, None, :], axis=-1)
             cos_alpha = jnp.sum(dir_vectors * sensor_vector, axis=-1)
             alpha = jnp.arccos(jnp.clip(cos_alpha, -1.0, 1.0))
-            r = svsfs.reflectance_models.lunar_lambert(alpha[:, None, None], cos_i, cos_e[None, ...])
+            r = model.reflectance_models.lunar_lambert(alpha[:, None, None], cos_i, cos_e[None, ...])
             return jnp.sum(weights[:, None, None] * visibility * r, axis=0)
 
         def sky_factor_step(total, batch):

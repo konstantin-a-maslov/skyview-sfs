@@ -7,6 +7,11 @@ import re
 
 def read_scene(path):
     scene = rioxarray.open_rasterio(path, masked=True)[0]
+    return scene
+
+    
+def read_scene_from_cub(path):
+    scene = rioxarray.open_rasterio(path, masked=True)[0]
     label = pvl.load(path)
 
     attrs = {

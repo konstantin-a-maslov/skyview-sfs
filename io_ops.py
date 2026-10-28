@@ -1,4 +1,5 @@
 import rioxarray
+import rasterio
 import pvl
 import numpy as np
 import pyproj
@@ -33,6 +34,16 @@ def read_scene_from_cub(path):
     scene.attrs.update(attrs)
 
     return scene
+
+
+def write(product, path):
+    if path.suffix in {".tif", ".tiff", ".TIF", ".TIFF"}:
+        write_as_cog(product, path)
+    raise NotImplementedError()
+
+
+def write_as_cog(product, path):
+    raise NotImplementedError()
 
 
 def convert_azimuths_to_image_space(scene):

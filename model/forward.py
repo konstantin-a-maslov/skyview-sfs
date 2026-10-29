@@ -12,7 +12,7 @@ def forward(
     cast_shadows=True,
     diffuse_sky=True,
     diffuse_sky_n_azimuth=32, diffuse_sky_n_elevation=32, diffuse_sky_azimuth_batch_size=1,
-    horizon_softness=0.25e-2, # in radians
+    horizon_softness=0.2e-2, # in radians
     return_aux=False,
 ):
     delta_z, g, b, d, kappa = params
@@ -21,8 +21,7 @@ def forward(
     z = z_prior + delta_z
     n = normals(z, dx, dy)
 
-    cos_i = jnp.sum(n * sun_vector, axis=-1)
-    cos_e = jnp.sum(n * sensor_vector, axis=-1)
+    cos_i, cos_e = jnp.sum(n * sun_vector, axis=-1), jnp.sum(n * sensor_vector, axis=-1)
     cos_alpha = jnp.sum(sun_vector * sensor_vector, axis=-1)
     alpha = jnp.arccos(jnp.clip(cos_alpha, -1.0, 1.0))
     if cast_shadows:
@@ -57,19 +56,13 @@ def forward(
         sky_factor = jnp.zeros_like(z)
         sky_factor, _ = jax.lax.scan(sky_factor_step, sky_factor, (sky_dirs, sky_weights))
         sky_factor /= (diffuse_sky_n_azimuth * diffuse_sky_n_elevation)
-        sky_factor = jnp.where(jnp.isnan(z), jnp.nan, sky_factor)
 
     illumination = sun_factor * r + d * sky_factor  
     image = g * albedo * illumination + b
 
     if return_aux:
-        aux = {
-            "r": r,
-            "sun_factor": sun_factor,
-            "sky_factor": sky_factor,
-        }
+        aux = {"r": r, "sun_factor": sun_factor, "sky_factor": sky_factor}
         return image, aux
-
     return image
 
 

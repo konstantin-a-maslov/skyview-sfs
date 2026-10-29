@@ -1,5 +1,4 @@
 import rioxarray
-import rasterio
 import pvl
 import numpy as np
 import pyproj
@@ -36,14 +35,32 @@ def read_scene_from_cub(path):
     return scene
 
 
-def write(product, path):
-    if path.suffix in {".tif", ".tiff", ".TIF", ".TIFF"}:
+def write(product, path, allow_cog=True):
+    path.parents[0].mkdir(parents=True, exist_ok=True)
+    if allow_cog and path.suffix in {".tif", ".tiff", ".TIF", ".TIFF"}:
         write_as_cog(product, path)
-    raise NotImplementedError()
+    product.rio.to_raster(path)
 
 
 def write_as_cog(product, path):
-    raise NotImplementedError()
+    product.rio.to_raster(
+        path,
+        driver="COG",
+        compress="LZW",
+        blocksize=512,
+        predictor=3,
+        num_threads="ALL_CPUS",
+        overview_resampling="average",
+        BIGTIFF="IF_SAFER",
+    )
+
+
+def write_array_with_georef(array, georef, path, name="", drop_attrs=True):
+    rst = georef.copy(deep=False).rename(name)
+    if drop_attrs:
+        rst.attrs = {}
+    rst.data[...] = array[...]
+    write(rst, path)
 
 
 def convert_azimuths_to_image_space(scene):

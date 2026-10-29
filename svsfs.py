@@ -19,6 +19,7 @@ def reconstruct_dem(args):
 
 def forward(args):
     import io_ops
+    import rasterio
     import utils
     import model.forward
 
@@ -27,20 +28,18 @@ def forward(args):
 
     albedo = args.albedo
     if isinstance(albedo, pathlib.Path):
-        raise NotImplementedError("Spatially varying albedo is not yet supported")
+        albedo = io_ops.read_scene(albedo)
+        albedo = albedo.rio.reproject_match(z, resampling=rasterio.enums.Resampling.bilinear)
+        albedo = albedo.data
 
-    z.attrs.update(dict(
-        sun_azimuth=args.sun_azimuth, 
-        sensor_azimuth=args.sensor_azimuth, 
-    ))
+    z.attrs.update(dict(sun_azimuth=args.sun_azimuth, sensor_azimuth=args.sensor_azimuth))
     z = io_ops.convert_azimuths_to_image_space(z)
     sun_vector = utils.azel_to_vector(z.attrs["sun_azimuth_img"], args.sun_elevation)
     sensor_vector = utils.azel_to_vector(z.attrs["sensor_azimuth_img"], args.sensor_elevation)
 
     return_aux = bool(args.r or args.sun_factor or args.sky_factor)
     params = z.data, args.g, args.b, args.d, args.kappa
-
-    image = model.forward.forward(
+    kwargs = dict(
         params=params,
         albedo=albedo, 
         z_prior=0.0,
@@ -56,15 +55,19 @@ def forward(args):
         horizon_softness=args.horizon_softness,
         return_aux=return_aux,
     )
-    if return_aux:
-        image, aux = image
 
-    import matplotlib.pyplot as plt
-    plt.imshow(image, cmap="gray")
-    plt.tight_layout()
-    plt.show()
+    if args.tile_size is None:
+        image = model.forward.forward(**kwargs)
+        if return_aux:
+            image, aux = image
 
-    
+    else:
+        raise NotImplementedError("Tiling is not yet implemented for forward")
+
+    io_ops.write_array_with_georef(image, z, args.output, name="I/F (model)")
+    for key in ["r", "sun_factor", "sky_factor"]:
+        if (arg_val := getattr(args, key, None)):
+            io_ops.write_array_with_georef(aux[key], z, arg_val, name=key)
 
 
 def resolve_cli_args():
@@ -78,6 +81,7 @@ def resolve_cli_args():
     forward = commands.add_parser("forward")
     forward.add_argument("--input", type=pathlib.Path, required=True, help="Input DEM raster (GDAL-supported)")
     forward.add_argument("--output", type=pathlib.Path, required=True, help="Output I/F raster (GDAL-supported)")
+    forward.add_argument("--tile_size", type=int, help="Tile size if tiling")
     forward.add_argument("--g", type=float, default=1.0, help="Image gain factor")
     forward.add_argument("--b", type=float, default=0.0, help="Image bias factor")
     forward.add_argument("--d", type=float, default=0.5, help="Diffuse sky gain factor")
@@ -92,7 +96,7 @@ def resolve_cli_args():
     forward.add_argument("--diffuse_sky_n_azimuth", type=int, default=32, help="Number of azimuth directions for diffuse sky illumination calculation")
     forward.add_argument("--diffuse_sky_n_elevation", type=int, default=32, help="Number of elevation directions for diffuse sky illumination calculation")
     forward.add_argument("--diffuse_sky_azimuth_batch_size", type=int, default=1, help="Batch size for traversing azimuth directions for diffuse sky illumination calculation")
-    forward.add_argument("--horizon_softness", type=float, default=0.0025, help="Softness parameter of horizon operator")
+    forward.add_argument("--horizon_softness", type=float, default=0.002, help="Softness parameter of horizon operator")
     forward.add_argument("--r", type=pathlib.Path, help="Output raw terrain-unaware illumination (GDAL-supported)")
     forward.add_argument("--sun_factor", type=pathlib.Path, help="Output cast shadows (GDAL-supported)")
     forward.add_argument("--sky_factor", type=pathlib.Path, help="Output diffuse sky contribution before its gain (GDAL-supported)")

@@ -39,6 +39,7 @@ def write(product, path, allow_cog=True):
     path.parents[0].mkdir(parents=True, exist_ok=True)
     if allow_cog and path.suffix in {".tif", ".tiff", ".TIF", ".TIFF"}:
         write_as_cog(product, path)
+        return
     product.rio.to_raster(path)
 
 
@@ -55,12 +56,14 @@ def write_as_cog(product, path):
     )
 
 
-def write_array_with_georef(array, georef, path, name="", drop_attrs=True):
+def write_array_with_georef(array, georef, path, name="", drop_attrs=True, attrs=None, allow_cog=True):
     rst = georef.copy(deep=False).rename(name)
     if drop_attrs:
         rst.attrs = {}
+    if attrs:
+        rst.attrs.update(attrs)
     rst.data[...] = array[...]
-    write(rst, path)
+    write(rst, path, allow_cog=allow_cog)
 
 
 def convert_azimuths_to_image_space(scene):

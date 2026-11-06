@@ -57,7 +57,7 @@ def reconstruction_loop(scenes, z_prior, slice_y, slice_x, args, pbar=None):
         iter += 1
 
         if pbar:
-            pbar.set_postfix_str(f"#{iter}{f'/{args.max_iter}' if args.max_iter else None} | some stats here")
+            pbar.set_postfix_str(f"#{iter}{f'/{args.max_iter}' if args.max_iter else ''} | some stats here")
 
         if args.max_iter and iter >= args.max_iter:
             break

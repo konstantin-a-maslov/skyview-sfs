@@ -20,10 +20,10 @@ def run(args):
     scenes = [io_ops.convert_azimuths_to_image_space(_) for _ in scenes]
     z_prior = z_prior.rio.reproject_match(grid, resampling=rasterio.enums.Resampling.bilinear)
 
-    (h, w), tile_size = grid.shape, args.tile_size
+    (h, w), tile_size = grid.rio.shape, args.tile_size
     n_steps_y, n_steps_x = 2 * h // tile_size - 1, 2 * w // tile_size - 1
 
-    with tqdm(total=n_steps_y * n_steps_x, desc="") as pbar:
+    with tqdm(total=n_steps_y * n_steps_x) as pbar:
         for row in range(0, h - tile_size + 1, tile_size // 2):
             for col in range(0, w - tile_size + 1, tile_size // 2):
                 slice_y, slice_x = slice(row, row + tile_size), slice(col, col + tile_size)
@@ -57,7 +57,7 @@ def reconstruction_loop(scenes, z_prior, slice_y, slice_x, args, pbar=None):
         iter += 1
 
         if pbar:
-            pbar.set_description(f"iteration {iter}, some stats here")
+            pbar.set_postfix_str(f"#{iter}{f'/{args.max_iter}' if args.max_iter else None} | some stats here")
 
         if args.max_iter and iter >= args.max_iter:
             break

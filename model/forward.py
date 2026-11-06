@@ -84,7 +84,7 @@ def horizon_operator(
     dir_vector,
     dx, dy, 
     sample_step_px=1.0,
-    softness=1e-2,
+    softness=0.2e-2,
     eps=1e-6,
 ):
     slope_max = horizon_slope(z, dir_vector, dx, dy, sample_step_px=sample_step_px, eps=eps)
@@ -148,7 +148,7 @@ def horizon_excess(slope_max, dir_vector, eps=1e-6):
     return slope_max - tan_elevation
 
 
-def visibility_from_excess(excess, dir_vector, softness=1e-2, eps=1e-6):
+def visibility_from_excess(excess, dir_vector, softness=0.2e-2, eps=1e-6):
     vx = dir_vector[..., 0, None, None]
     vy = dir_vector[..., 1, None, None]
     vz = dir_vector[..., 2, None, None]
